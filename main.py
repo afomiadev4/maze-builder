@@ -193,3 +193,91 @@ class MazeApp:
             r, c = path[-1]
             cx, cy = int(self.x_offset + c * self.cell_size + self.cell_size / 2), int(self.y_offset + r * self.cell_size + self.cell_size / 2)
             pygame.draw.circle(self.virtual_screen, COLOR_GEN_DOT if "Generating" in self.status_text else COLOR_TEXT, (cx, cy), int(self.cell_size * 0.4), 3)
+    def handle_event(self, event):
+        win_off_x = max(0, (self.win_w - VIRTUAL_WIDTH) // 2)
+        pos = list(pygame.mouse.get_pos())
+        pos[0] -= win_off_x; pos[1] -= self.scroll_y
+        for el in self.elements: el.hovered = el.rect.collidepoint(pos)
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            clicked_any = False
+            for el in self.elements:
+                if isinstance(el, Dropdown) and el.expanded:
+                    for i in range(len(el.options)):
+                        opt_rect = pygame.Rect(el.rect.x, el.rect.bottom + i * 35, el.rect.w, 35)
+                        if opt_rect.collidepoint(pos):
+                            el.curr_idx = i; el.expanded = False; clicked_any = True
+                            if el.id == "gen_drop": self.gen_type = "dfs" if i == 0 else "bfs"
+                            if el.id == "solve_drop": self.solver_type = "backtrack" if i == 0 else "wall-follower"
+                            break
+                    if not clicked_any: el.expanded = False
+            if not clicked_any:
+                for el in self.elements:
+                    if el.rect.collidepoint(pos):
+                        self.on_click(el); clicked_any = True
+                        if isinstance(el, Slider): el.dragging = True
+                        break
+            if not clicked_any:
+                if pygame.Rect(CONTENT_OFFSET_X, 140, self.canvas_size, self.canvas_size).collidepoint(pos):
+                    c, r = int((pos[0] - self.x_offset) / self.cell_size), int((pos[1] - self.y_offset) / self.cell_size)
+                    if not self.is_animating:
+                        if self.maze.start_cell and self.maze.end_cell: self.maze.start_cell = (r, c); self.maze.end_cell = None
+                        elif self.maze.start_cell: (self.maze.start_cell != (r, c) and setattr(self.maze, 'end_cell', (r, c)))
+                        else: self.maze.start_cell = (r, c)
+        if event.type == pygame.MOUSEWHEEL:
+            self.scroll_y += event.y * 30; lim = min(0, self.win_h - VIRTUAL_HEIGHT); self.scroll_y = max(lim, min(0, self.scroll_y))
+        if event.type == pygame.VIDEORESIZE: self.win_w, self.win_h = event.w, event.h; self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+        if event.type == pygame.MOUSEBUTTONUP:
+            for el in self.elements: (isinstance(el, Slider) and setattr(el, 'dragging', False))
+
+    def on_click(self, el):
+        if self.is_animating and el.id not in ["next_step", "step_mode", "speed_slider"]: return
+        if isinstance(el, Dropdown): el.expanded = not el.expanded; return
+        upd = False
+        if el.id == "rows_inc": self.rows = min(50, self.rows + 1); upd = True
+        elif el.id == "rows_dec": self.rows = max(5, self.rows - 1); upd = True
+        elif el.id == "cols_inc": self.cols = min(50, self.cols + 1); upd = True
+        elif el.id == "cols_dec": self.cols = max(5, self.cols - 1); upd = True
+        if upd:
+            self.calculate_grid(); self.maze = Maze(self.rows, self.cols)
+            for e in self.elements: (isinstance(e, InputNumber) and setattr(e, 'val', self.rows if e.id=="rows" else self.cols))
+            return
+        if el.id == "challenge": el.checked = not el.checked; self.challenge_mode = el.checked
+        elif el.id == "step_mode": el.checked = not el.checked; self.step_mode = el.checked; self.btn_next.enabled = el.checked
+        elif el.id == "generate": self.start_gen()
+        elif el.id == "solve": self.start_solve()
+        elif el.id == "next_step": self.advance_algo()
+
+    def start_gen(self):
+        self.maze = Maze(self.rows, self.cols); self.calculate_grid(); self.current_algo = self.maze.generate_dfs(self.challenge_mode) if self.gen_type == "dfs" else self.maze.generate_bfs(self.challenge_mode); self.is_animating = True; self.status_text = "Generating..."; self.btn_solve.enabled = False
+        
+    def start_solve(self):
+        if not self.maze.start_cell or not self.maze.end_cell: self.status_text = "Set points first!"; return
+        self.current_algo = self.maze.solve_backtracking() if self.solver_type == "backtrack" else self.maze.solve_wall_follower(); self.is_animating = True; self.status_text = "Solving..."
+
+    def advance_algo(self):
+        if not self.current_algo: return
+        try:
+            self.algo_state = next(self.current_algo); tag = self.algo_state[0]
+            if tag == "solved": self.is_animating = False; self.status_text = "Solved!"
+            elif tag == "failed": self.is_animating = False; self.status_text = "No Path Found"
+            elif tag == "loop": self.is_animating = False; self.status_text = "Trapped in cycle!"
+            self.stats["path"] = len(self.algo_state[1]) if tag in ["step", "solved", "failed", "loop"] else (len(self.algo_state[2]) if tag in ["visit", "backtrack"] else 0)
+            self.stats["visited"] = sum(1 for r in self.maze.visited for c in r if c > 0)
+            if tag == "backtrack": self.stats["backtracks"] += 1
+        except StopIteration:
+            self.is_animating = False; ("Generating" in self.status_text and self.maze.reset_visited()); self.status_text = "Done"; self.btn_solve.enabled = True
+
+    def run(self):
+        while True:
+            for event in pygame.event.get(): (event.type == pygame.QUIT and (pygame.quit() or sys.exit())); self.handle_event(event)
+            if self.is_animating and not self.step_mode: (pygame.time.get_ticks() % max(16, self.speed) < 16 and self.advance_algo())
+            m_pos = pygame.mouse.get_pos()
+            for el in self.elements: (isinstance(el, Slider) and el.dragging and setattr(self, 'speed', el.min_val + (max(0, min(el.rect.w, m_pos[0] - (max(0, (self.win_w - VIRTUAL_WIDTH) // 2) + el.rect.x))) / el.rect.w) * (el.max_val - el.min_val)) or (isinstance(el, Slider) and el.dragging and setattr(el, 'curr_val', self.speed)))
+            self.draw_ui(); self.draw_maze(); self.draw_algo_state(); self.screen.fill(COLOR_BG); win_off_x = max(0, (self.win_w - VIRTUAL_WIDTH) // 2); self.screen.blit(self.virtual_screen, (win_off_x, self.scroll_y))
+            if VIRTUAL_HEIGHT > self.win_h:
+                bh = (self.win_h / VIRTUAL_HEIGHT) * self.win_h; by = (-self.scroll_y / VIRTUAL_HEIGHT) * self.win_h
+                pygame.draw.rect(self.screen, COLOR_BORDER, (self.screen.get_width()-8, 0, 6, self.win_h), border_radius=3); pygame.draw.rect(self.screen, COLOR_PRIMARY, (self.screen.get_width()-8, by, 6, bh), border_radius=3)
+            pygame.display.flip(); self.clock.tick(FPS)
+
+if __name__ == "__main__":
+    app = MazeApp(); app.run()
