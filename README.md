@@ -1,53 +1,62 @@
-# Pathfinder Studio: Maze Builder & Solver
+# Pathfinder Studio: Interactive Maze Builder & Solver
 
-An interactive, real-time visualization tool built with Pygame that demonstrates maze generation and pathfinding algorithms over a customized grid system.
-
----
-
-## 🚀 Features
-
-### 1. Interactive Customization UI
-* **Dynamic Grid Sizing:** Modify rows and columns dynamically between $5 \times 5$ and $50 \times 50$ directly from the visual panel.
-* **Real-time Speed Adjustments:** Drag a custom configuration slider to scale animation delays from 0ms up to 500ms per algorithmic step.
-* **Flexible Execution Modes:** Switch between automated continuous visualization and a manual **Step-by-Step Mode** using simple interactive controls.
-* **Manual Endpoint Placement:** Directly left-click on the canvas grid to place your starting position (🐁) and destination point (🧀).
-
-### 2. Generation Algorithms
-* **DFS (Stack-based):** Generates winding, deeply tortuous mazes with fewer branching intersections and long corridors.
-* **BFS (Queue-based):** Generates radial, uniformly spreading layouts across the canvas grid.
-* **Challenge Mode:** An optional setting that injects cyclic pathways by randomly breaking down additional walls during generation, creating imperfect mazes with loops.
-
-### 3. Traversal and Solving Systems
-* **Backtracking (DFS solver):** Explores corridors and systematically marks dead ends visually, tracking its execution pathway dynamically.
-* **Wall Follower:** Employs a right-hand rule priority framework (`Right ➔ Straight ➔ Left ➔ Back`) to hug maze boundaries until it encounters the exit.
+An interactive, real-time visualization tool built with Pygame that demonstrates advanced maze generation and pathfinding (solving) algorithms over a customized grid coordinate system.
 
 ---
 
-## 🛠️ Project Architecture
+## 🛠️ Implementation Logic & Algorithm Breakdown
 
-The workspace is organized into modular Python modules following clear object-oriented guidelines:
+This project utilizes Python's memory-efficient **generator functions (`yield`)** to decouple the algorithmic calculation steps from Pygame's rendering frame rate. Instead of calculating a maze instantly, each step yields data frames back to the main loop, allowing smooth, real-time visualization animations.
 
-* **`main.py`** – The application coordinator managing the primary visualization update loop, Pygame input event parsing, asset scaling, and the rendering cascade.
-* **`maze.py`** – Maintains structural matrix data handling for cell parameters, tracking active walls, and exposing validation wrappers to algorithms.
-* **`generators.py`** – Implements the underlying yielding generator functions for DFS and BFS layout builders.
-* **`solvers.py`** – Houses pathfinding execution generators providing incremental frame states back to the application loop.
-* **`ui.py`** – Defines layout widgets such as abstract elements, buttons, drop-down menus, checkboxes, numeric boxes, and sliders.
-* **`config.py`** – Declares layout configurations, interface dimensions, frame rate upper boundaries, and a unified dark theme color scheme palette.
+### 1. Generation Systems (`generators.py`)
+* **Depth-First Search (DFS / Stack-Based):** Chooses a random starting cell and utilizes a stack array to keep track of its historical path. It aggressively carves deep corridors by choosing random unvisited neighbors until hitting a dead end, where it pops elements off the stack to backtrack. This results in highly winding mazes with long corridors.
+* **Breadth-First Search (BFS / Queue-Based):** Operates via a first-in, first-out queue mechanism. It expands systematically outwards from its starting hub, creating broader, more concentric and radially expanding pathways across the canvas layout.
+* **Challenge Mode Implementation:** To add complexity, we implemented a custom flag that injects cyclic loops into our perfect mazes. During generation, it checks a random float boundary ($< 5\%$ probability); if triggered, it intentionally breaks down an adjacent wall, giving users multiple paths to the exit.
 
----
-
-## 🎨 Under-the-Hood Data Structures
-
-To prevent rendering redundancy, the layout eliminates standard four-sided cell mapping. Instead, each individual grid element tracks only its **North** and **East** wall configurations. 
-* An intact wall is denoted as `1`, whereas an empty pathway is denoted as `0`.
-* An extra row at the upper boundary acts as a bounding anchor to close off the grid safely.
+### 2. Solving Systems (`solvers.py`)
+* **Backtracking Solver:** Re-initializes a stack tracking array starting from the designated user coordinates. As it searches for the end cell, it visually markers dead-ends with a distinct code identifier (`2`), telling the rendering engine to paint them as explored but incorrect routes.
+* **Wall Follower (Right-Hand Rule):** Simulates a physical traversal strategy by prioritizing movement directions in a fixed rotational order relative to current heading direction indices: `Right ➔ Straight ➔ Left ➔ Backward`. It handles complex collision conditions across our distinct North and East coordinate walls to track continuous loops.
 
 ---
 
-## 💻 How to Run the Project
+## 🎨 Architectural Design Choices
 
-### Prerequisites
-Make sure you have Python 3 and the Pygame library installed on your computer. If you don't have Pygame, install it via your terminal/command prompt:
+To keep this project highly performance-optimized and lightweight, we made critical structural decisions:
 
+### Minimalist Wall Structure
+Standard grids track 4 independent walls per cell, creating double redundancy (e.g., Cell A's East wall is Cell B's West wall). We eliminated this entirely. Each coordinate only stores a **North** and an **East** wall array. 
+* **0** indicates an open path, and **1** indicates a solid wall.
+* To prevent index errors at boundaries, we engineered a dedicated **Phantom Row** at index `rows` to naturally seal the bottom grid margins without extra layout objects.
+
+### Custom-Built UI Architecture (`ui.py`)
+Instead of bloated external layout libraries, we built lightweight object-oriented widgets from scratch using basic Pygame surfaces:
+* **`UIElement` Framework:** The abstract baseline class tracking mouse hover intersections (`self.hovered`) and bounding rect collision layouts.
+* **`Slider` Component:** Normalizes mouse coordinates dynamically relative to the screen offset to calculate value ratios on a scale (0ms–500ms for speed delay control).
+* **`InputNumber` Box & `Dropdown` Selection:** Captures direct user input and tracks expanded visibility toggles for runtime parameter adaptation.
+
+---
+
+## ⚠️ Challenges Faced & Solutions Engineered
+
+### 1. The Challenge: Decoupling Computations from Frame Rendering Upper Boundaries
+* **The Problem:** Standard loops freeze the entire display canvas during heavy recursive calculation loops, preventing step-by-step canvas visualization.
+* **The Solution:** We migrated all logic inside `generators.py` and `solvers.py` to use Python state generators (`yield`). `main.py` can now process a single algorithmic calculation step per game clock tick while keeping the GUI responsive to user window resize updates or dragging actions.
+
+### 2. The Challenge: Infinite Loops in Wall Follower Tracking
+* **The Problem:** On cyclic layouts (Challenge Mode), the wall follower algorithm could easily get trapped running in an infinite circular corridor loop.
+* **The Solution:** We implemented an upper boundary calculation matrix framework (`max_steps = rows * cols * 10`). If execution steps cross this cap threshold, the state machine yields a `"loop"` event type, updating the interface status banner safely instead of crashing the system application thread.
+
+---
+
+## 💻 Technical Setup & Project Architecture
+
+* `config.py` – Global colors palette scheme and dimensional aspect parameters.
+* `ui.py` – Structural blueprint objects for interactive sliders, buttons, and text fields.
+* `maze.py` – The coordinate grid matrix maps holding structural configurations.
+* `main.py` – The core executable engine coordinating rendering cycles and user input events.
+
+### Execution
+Ensure you have Pygame installed, and launch the primary runner module:
 ```bash
 pip install pygame
+python main.py
