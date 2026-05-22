@@ -19,15 +19,33 @@ def generate_dfs(maze, challenge_mode=False):
             maze.remove_wall(curr_r, curr_c, direction)
             maze.visited[next_r][next_c] = 1
             stack.append((next_r, next_c))
-            
+
             if challenge_mode and random.random() < 0.05:
                 rand_dir = random.choice(list(Direction))
                 maze.remove_wall(curr_r, curr_c, rand_dir)
-            
+
             yield ("visit", (next_r, next_c), list(stack))
         else:
             stack.pop()
             yield ("backtrack", (curr_r, curr_c), list(stack))
+
+    # After DFS, optionally carve extra connections to create cycles.
+    if challenge_mode:
+        directions = [Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST]
+        for r in range(maze.rows):
+            for c in range(maze.cols):
+                if random.randint(0, 100) < 15:
+                    candidates = []
+                    if r > 0:
+                        candidates.append(Direction.NORTH)
+                    if r < maze.rows - 1:
+                        candidates.append(Direction.SOUTH)
+                    if c > 0:
+                        candidates.append(Direction.WEST)
+                    if c < maze.cols - 1:
+                        candidates.append(Direction.EAST)
+                    if candidates:
+                        maze.remove_wall(r, c, random.choice(candidates))
 
 def generate_bfs(maze, challenge_mode=False):
     from maze import Direction

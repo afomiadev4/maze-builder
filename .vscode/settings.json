@@ -1,0 +1,6 @@
+{
+  "python.defaultInterpreterPath": "/home/ruza/Desktop/OS2/.venv/bin/python",
+  "code-runner.executorMap": {
+    "python": "/home/ruza/Desktop/OS2/.venv/bin/python -u"
+  }
+}
